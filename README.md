@@ -155,3 +155,37 @@ python3 examples/mahm-reader.py
   driver lo permite).
 * Cliente Python completo estilo Afterburner Tray para MAHM.
 * Perfiles automáticos por juego (HotKeys de Afterburner → `notify`/`dbus`).
+
+## GUI TRON (demonio + navegador)
+
+El demonio (`afterburner-rs daemon`) arranca un servidor HTTP de sólo-bucle-local
+en `http://127.0.0.1:7939` (API clásica binaria de Afterburner en Windows era el
+equivalente servidor/IPC). `afterburner-rs gui` garantiza el demonio y abre el
+navegador.
+
+Panel con tema negro + neón cian/naranja y cobertura completa de la superficie:
+
+- **En vivo por GPU**: temp/fan%/RPM/clocks/uso/potencia con barras neón + sparkline.
+- **Límite de potencia**: slider 100–319 W, aplicar / reset.
+- **Offsets de reloj**: core/mem + lock-core/lock-mem (equivale a los ejes de NV).
+- **Ventilador**: modo AUTO / MANUAL % / **curva de software** con editor
+  gráfico (clic para añadir, arrastrar para mover, doble clic para borrar) y presets.
+- **Perfiles 1–9** (guardar/cargar, compatibles con `profile save/load` CLI).
+- **Reset** completo por GPU.
+- **Log CSV** activable (EnableLog/LogPath en el fichero de ajustes).
+- **Visor MAHM** (la memoria compartida publicada, leída como un cliente).
+- Estado del demonio y versión.
+
+API (POSTs sólo desde localhost): `/api/set`, `/api/reset`, `/api/curve`,
+`/api/curve-off`, `/api/profile/save`, `/api/profile/load`, `/api/profiles` (GET),
+`/api/mahm` (GET), `/api/log`. `GET /api/sample` da el estado completo en JSON.
+
+### Entradas de menú e icono
+
+- `afterburner-rs-gui.desktop` → menú «Afterburner RS» (abre la GUI TRON).
+- `afterburner-rs-monitor.desktop` → «Afterburner RS Monitor» (TUI en terminal).
+- Icono SVG en hicolor (`~/.local/share/icons/hicolor/scalable/apps/afterburner-rs.svg`
+  y su copia en `/usr/share`).
+
+Servicio `afterburner-rs.service` corre como usuario con `HOME` del escritorio:
+perfiles y ajustes se comparten con la CLI (`~/.config/afterburner-rs/`).
