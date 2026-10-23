@@ -5,8 +5,10 @@
 
 mod api;
 mod config;
+mod gui;
 mod drivers;
 mod fancurve;
+mod fan_service;
 mod gpu;
 mod macm;
 mod mahm;
@@ -39,7 +41,7 @@ fn eprint_help() {
     println!("  afterburner-rs fan-curve TEMP:PERCENT,...  install software fan curve (daemon required)");
     println!("  afterburner-rs profile list|save N|load N|show N");
     println!("  afterburner-rs daemon                     monitoring + fan curve + MACM control + GUI/API server");
-    println!("  afterburner-rs gui                        open the TRON dashboard (starts daemon if needed)");
+    println!("  afterburner-rs gui                        native GTK4 desktop interface (no browser)");
     println!("  afterburner-rs mahm-dump                  read /dev/shm/MAHMSharedMemory as a client would");
     println!("  afterburner-rs macm-dump                  read /dev/shm/MACMSharedMemory as a client would");
     println!();
@@ -68,7 +70,8 @@ fn main() {
         "daemon" => cmd_daemon(rest),
         "mahm-dump" => cmd_mahm_dump(),
         "macm-dump" => cmd_macm_dump(),
-        "gui" => api::open_gui(),
+        "gui" => gui::run(&rest),
+        "fan-service" => fan_service::run(rest),
         "help" | "--help" | "-h" => {
             eprint_help();
             0
@@ -83,7 +86,7 @@ fn main() {
 }
 
 /// Build the driver trait object per GPU.
-fn driver_for(g: &GpuDevice) -> Box<dyn GpuDriver> {
+pub(crate) fn driver_for(g: &GpuDevice) -> Box<dyn GpuDriver> {
     match g.vendor {
         Vendor::Nvidia => Box::new(drivers::nvidia::NvidiaDriver::new(g.pci_addr.clone())),
         Vendor::Amd => Box::new(drivers::amd::AmdDriver::new(
@@ -126,7 +129,7 @@ fn cmd_list() -> i32 {
     0
 }
 
-fn nvsmi_names() -> std::collections::BTreeMap<String, String> {
+pub(crate) fn nvsmi_names() -> std::collections::BTreeMap<String, String> {
     let mut out = std::collections::BTreeMap::new();
     let o = Command::new("nvidia-smi")
         .args(["--query-gpu=pci.bus_id,name", "--format=csv,noheader"])
@@ -702,9 +705,9 @@ fn cmd_daemon(args: &[String]) -> i32 {
     };
     let server_on = settings
         .get_i64("Settings", "EnableServer")
-        .unwrap_or(1)
+        .unwrap_or(0)
         != 0;
-    let log_path = {
+    let mut log_path = {
         let en = settings.get_i64("Settings", "EnableLog").unwrap_or(0) == 1;
         match settings.get("Settings", "LogPath") {
             Some(p) if !p.is_empty() && en => Some(p.to_string()),
@@ -732,7 +735,7 @@ fn cmd_daemon(args: &[String]) -> i32 {
     let port = api::port_from_settings(&settings);
     if server_on {
         match api::start_server(port, Arc::clone(&state)) {
-            Ok(_) => println!("GUI/API server on http://127.0.0.1:{port} (afterburner-rs gui)"),
+            Ok(_) => println!("Optional web compatibility server on http://127.0.0.1:{port}"),
             Err(e) => eprintln!("API server unavailable on {port}: {e}"),
         }
     }
@@ -744,8 +747,8 @@ fn cmd_daemon(args: &[String]) -> i32 {
     let mut caps_cache: Vec<drivers::Caps> = vec![];
     let mut iter = 0u64;
 
-    let mut hist = monitor::History::new(2048);
-    let mut headers: Vec<String> = vec![];
+    let mut curve_gpu = settings.get_i64("Settings", "SoftwareFanCurveGpu").unwrap_or(0).max(0) as usize;
+    let mut last_log_error = String::new();
     println!(
         "afterburner-rs daemon on {} GPU(s). Poll {}ms; writing {}",
         gpus.len(), period, mahm::SHM_NAME
@@ -768,6 +771,14 @@ fn cmd_daemon(args: &[String]) -> i32 {
                 ini.get_i64("Settings", "SoftwareFanCurveEnabled").unwrap_or(0) == 1,
                 Ordering::SeqCst,
             );
+            curve_gpu = ini.get_i64("Settings", "SoftwareFanCurveGpu").unwrap_or(0).max(0) as usize;
+            if let Some(ms) = ini.get_i64("Settings", "HwPollPeriod") {
+                period = ms.clamp(100, 10000) as u64;
+            }
+            log_path = if ini.get_i64("Settings", "EnableLog").unwrap_or(0) == 1 {
+                Some(ini.get("Settings", "LogPath").filter(|p|!p.is_empty()).map(str::to_owned)
+                    .unwrap_or_else(||config::config_dir().join("hardware-log.csv").to_string_lossy().into_owned()))
+            } else { None };
         }
 
         // -- poll all GPUs
@@ -786,17 +797,6 @@ fn cmd_daemon(args: &[String]) -> i32 {
                 caps_now.push(d.caps());
             }
             samples.push(s.clone());
-            if headers.is_empty() {
-                headers.extend([
-                    format!("GPU{k} temp"), format!("GPU{k} fan"),
-                    format!("GPU{k} core"), format!("GPU{k} mem"),
-                    format!("GPU{k} usage"), format!("GPU{k} power"),
-                ]);
-            }
-            hist.push(
-                &[s.temp_core, s.fan_pct, s.clk_core, s.clk_mem, s.usage_gpu, s.power_w],
-                util::now_secs(),
-            );
         }
         if iter % 30 == 0 || limits_cache.len() != gpus.len() {
             limits_cache = limits_now.clone();
@@ -811,10 +811,10 @@ fn cmd_daemon(args: &[String]) -> i32 {
 
         // -- fan curve act
         if curve_on.load(Ordering::SeqCst) {
-            if let Some(s) = samples.first() {
+            if let Some(s) = samples.get(curve_gpu) {
                 if let Some(temp) = s.temp_core {
                     if let Some(duty) = fanctl.target_for(temp) {
-                        let mut d = driver_for(&gpus[0]);
+                        let mut d = driver_for(&gpus[curve_gpu]);
                         let rep = d.apply(&ApplySettings {
                             fan_pct: Some(duty),
                             fan_auto: false,
@@ -873,7 +873,10 @@ fn cmd_daemon(args: &[String]) -> i32 {
 
         // -- optional CSV log
         if let Some(p) = &log_path {
-            let _ = monitor::log_csv(p, &hist.stamps, &hist);
+            if let Err(e) = monitor::append_samples_csv(p, util::now_secs(), &samples) {
+                let msg = format!("CSV {p}: {e}");
+                if msg != last_log_error { eprintln!("{msg}"); last_log_error = msg; }
+            } else { last_log_error.clear(); }
         }
 
         iter += 1;

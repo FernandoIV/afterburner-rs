@@ -115,6 +115,23 @@ pub fn log_csv(path: &str, stamps: &[u64], series: &History) -> std::io::Result<
     Ok(())
 }
 
+/// Append one complete multi-GPU poll. Unlike the old ring dump this never
+/// truncates a user's log or writes a separate incomplete row per GPU.
+pub fn append_samples_csv(path: &str, time: u64, samples: &[Sample]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    if f.metadata()?.len() == 0 {
+        let columns: Vec<_> = samples.iter().enumerate().flat_map(|(i, _)| {
+            ["temperature_c", "fan_pct", "core_mhz", "memory_mhz", "usage_pct", "power_w"]
+                .map(|name| format!("gpu{i}_{name}"))
+        }).collect();
+        writeln!(f, "time,{}", columns.join(","))?;
+    }
+    let values: Vec<_> = samples.iter().flat_map(|s| [s.temp_core,s.fan_pct,s.clk_core,s.clk_mem,s.usage_gpu,s.power_w])
+        .map(|v| v.filter(|v|v.is_finite()).map(|v|format!("{v:.2}")).unwrap_or_default()).collect();
+    writeln!(f,"{time},{}",values.join(","))
+}
+
 /// CPU-side sources for global entries (CPU temp/usage, RAM usage).
 pub fn cpu_snapshot() -> (Option<f32>, Option<f32>, Option<f32>) {
     // Temperature via coretemp package
@@ -206,4 +223,23 @@ fn read_meminfo() -> Option<f32> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn csv_appends_complete_multi_gpu_polls() {
+        let temporary = std::env::temp_dir().join(format!("afterburner-csv-test-{}.csv", std::process::id()));
+        let path = temporary.to_string_lossy().into_owned();
+        let a = Sample { temp_core: Some(50.0), power_w: Some(17.5), ..Default::default() };
+        let b = Sample { temp_core: Some(40.0), ..Default::default() };
+        append_samples_csv(&path, 10, &[a.clone(), b.clone()]).unwrap();
+        append_samples_csv(&path, 11, &[a, b]).unwrap();
+        let data = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(data.lines().count(), 3);
+        assert!(data.lines().all(|l|l.split(',').count() == 13));
+        assert!(data.contains("gpu1_temperature_c"));
+        std::fs::remove_file(path).unwrap();
+    }
 }

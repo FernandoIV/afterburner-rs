@@ -1,2 +1,31 @@
-/target
-*.pyc
+/target/
+__pycache__/
+*.py[cod]
+
+# Local runtime output and configuration; never upload hardware profiles or logs.
+/.config/
+/.cache/
+/ui-smoke/
+*.log
+*.csv
+*.tmp
+core
+core.*
+
+# Credentials and local environment overrides.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Proprietary analysis inputs and extracted vendor payloads are not project source.
+*.exe
+*.dll
+*.sys
+*.msi
+*.cab
+*.zip
+*.7z

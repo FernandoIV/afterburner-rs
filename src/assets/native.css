@@ -1,0 +1,61 @@
+/* Native GTK widgets, not HTML/CSS in a web view. */
+window { background: #05090e; color: #dcebf2; font-family: Sans; font-size: 13px; }
+headerbar { background: #080f17; border-bottom: 1px solid #183140; box-shadow: none; }
+headerbar label { color: #dcebf2; }
+.brand { color: #5cf0ff; font-weight: 800; font-size: 17px; letter-spacing: 2px; }
+.badge { color: #53e8d1; background: #102c2a; border: 1px solid #22504b; border-radius: 20px; padding: 5px 13px; font-size: 11px; font-weight: 700; }
+.sidebar { background: #080f17; border-right: 1px solid #172c3a; padding: 12px 6px; }
+.sidebar row { padding: 14px 12px; margin: 3px 4px; border-radius: 9px; color: #8fa9b8; }
+.sidebar row:selected { color: #63efff; background: #102c38; box-shadow: inset 3px 0 #00d9f2; }
+.sidebar row:hover { background: #10222e; }
+.page { padding: 5px; }
+.page-title { color: #f0fbff; font-size: 25px; font-weight: 800; }
+.page-subtitle, .subtle { color: #8ca6b6; font-size: 12px; }
+.caption { color: #7fa2b6; font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+.card { background: #0b141e; border: 1px solid #1b3547; border-radius: 13px; padding: 17px; }
+.card:hover { border-color: #27536a; }
+.card-title { color: #dcecf5; font-size: 15px; font-weight: 700; }
+.metric { background: #0b151f; border: 1px solid #1b3b4c; border-radius: 13px; padding: 14px 18px; }
+.metric-value { color: #63efff; font-size: 32px; font-weight: 700; font-feature-settings: "tnum"; }
+.metric.accent .metric-value { color: #ffac50; }
+.unit { color: #8ca5b6; font-size: 13px; }
+.status { background: #0b151e; border: 1px solid #1a3545; border-radius: 9px; padding: 10px 15px; color: #a3c5d6; }
+.table-header { color: #69c5de; font-weight: 700; padding: 9px 12px; background: #102331; }
+.table-cell { color: #b6ccda; padding: 8px 12px; border-bottom: 1px solid #172c3a; }
+.table-value { color: #5cf0ff; font-weight: 700; }
+.slot-number { color: #20dff4; font-size: 27px; font-weight: 800; }
+button { background: #112333; color: #c9e7f5; border: 1px solid #27506a; border-radius: 8px; padding: 9px 14px; font-weight: 600; box-shadow: none; }
+button:hover { background: #19364a; border-color: #46bcd3; }
+button:active { background: #20485e; }
+button.primary { background: #00cbe6; color: #00151c; border-color: #49edff; }
+button.primary:hover { background: #5cecff; box-shadow: 0 0 9px alpha(#00d9f2, .20); }
+button.accent { background: #392515; color: #ffc07b; border-color: #87502b; }
+button.accent:hover { background: #51321a; }
+button.danger { color: #ff9ca9; background: #301921; border-color: #69303e; }
+button:disabled { color: #4b6373; background: #0c1923; border-color: #1c303f; }
+entry, spinbutton { background: #060e16; color: #d7edf8; border: 1px solid #294354; border-radius: 7px; min-height: 28px; }
+entry { padding: 4px 10px; }
+entry:focus, spinbutton:focus-within { border-color: #1ad6ee; }
+spinbutton text { color: #cceaf5; padding: 5px; }
+spinbutton button { padding: 5px; border-radius: 4px; }
+combobox button { padding: 8px 12px; }
+combobox popover { background: #0c1925; color: #d7edf8; }
+scale trough { background: #152d3e; min-height: 6px; border-radius: 6px; }
+scale highlight { background: #00d5ec; border-radius: 6px; }
+scale slider { background: #c1f9ff; border: 3px solid #00bbd6; min-width: 12px; min-height: 12px; margin: -5px; border-radius: 20px; }
+scale value { color: #62ebff; font-size: 15px; font-weight: 700; }
+scale.accent highlight { background: #f6a24f; }
+scale.accent slider { background: #ffe0b2; border-color: #ea8e32; }
+progressbar trough { background: #162c3b; min-height: 5px; border-radius: 5px; }
+progressbar progress { background: #04cee8; min-height: 5px; border-radius: 5px; border: none; }
+.accent progressbar progress { background: #f6a24f; }
+switch { background: #213748; border-radius: 20px; min-height: 24px; }
+switch:checked { background: #008b9f; }
+switch slider { background: #bde4ed; border-radius: 20px; min-width: 20px; min-height: 20px; }
+checkbutton { color: #aac7d6; }
+checkbutton check { background: #102331; border: 1px solid #34546a; border-radius: 4px; }
+checkbutton check:checked { color: #00151c; background: #00d1e9; }
+scrolledwindow { background: transparent; }
+scrollbar { background: transparent; }
+scrollbar slider { background: #26485b; border-radius: 8px; min-width: 5px; }
+dialog { background: #0c1722; color: #dcecf5; }

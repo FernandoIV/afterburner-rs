@@ -7,7 +7,6 @@
 //! (clock locking, clock offsets, power limits are also reachable there).
 
 use super::{ApplySettings, AppliedReport, Caps, GpuDriver, Limits, Sample};
-use crate::util;
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_int, CString};
 use std::process::Command;
@@ -158,31 +157,19 @@ impl NvidiaDriver {
         if self.index.is_some() {
             return;
         }
-        // enumerate via CLI to map busId->gpu index
         let out = Command::new("nvidia-smi")
-            .args(["--list-gpus"])
+            .args(["--query-gpu=index,pci.bus_id", "--format=csv,noheader"])
             .output();
         if let Ok(o) = out {
             let txt = String::from_utf8_lossy(&o.stdout);
-            for (i, line) in txt.lines().enumerate() {
-                // "GPU 0: NVIDIA GeForce RTX 3070 Ti (PCI:1:0:0)"
-                let t = line.trim();
-                if t.starts_with("GPU") && t.contains(&self.pci_addr) {
-                    self.index = Some(i as u32);
-                    return;
-                }
-            }
-        }
-        // Fallback: parse old pci_bus_id query if available.
-        let out = Command::new("nvidia-smi")
-            .args(["--query-gpu=pci.bus_id", "--format=csv,noheader"])
-            .output();
-        if let Ok(o) = out {
-            let txt = String::from_utf8_lossy(&o.stdout);
-            for (i, line) in txt.lines().enumerate() {
-                if line.trim().eq_ignore_ascii_case(&format!("00000000:{}", self.pci_addr)) {
-                    self.index = Some(i as u32);
-                    return;
+            for line in txt.lines() {
+                if let Some((index, pci)) = line.split_once(',') {
+                    let pci = pci.trim();
+                    let normalized = if pci.len() == 16 { &pci[4..] } else { pci };
+                    if normalized.eq_ignore_ascii_case(&self.pci_addr) {
+                        self.index = index.trim().parse().ok();
+                        return;
+                    }
                 }
             }
         }
@@ -275,6 +262,8 @@ unsafe fn call0(name: &str) -> i32 {
 
 impl GpuDriver for NvidiaDriver {
     fn sample(&mut self) -> Sample {
+        // Drivers live on the native UI worker now; never retain the first reading forever.
+        self.smi_cache = None;
         self.refresh_smi();
         let m = self.smi_cache.clone().unwrap_or_default();
         Sample {
@@ -316,58 +305,69 @@ impl GpuDriver for NvidiaDriver {
         if let Some(big) = s.lock_core_clock {
             let mut cmd = Command::new("nvidia-smi");
             cmd.args([&format!("--id={idx}"), "--lock-gpu-clocks", &format!("{},{}", big.0, big.1)]);
-            push_result(&mut rep, run_smi(&mut cmd));
-            rep.notes.push(format!("locked GPU clocks to {}-{} MHz", big.0, big.1));
+            let r = run_smi(&mut cmd);
+            if r.0 { rep.notes.push(format!("Core clocks locked to {}–{} MHz", big.0, big.1)); }
+            push_result(&mut rep, r);
         }
         if let Some(m) = s.lock_mem_clock {
             let mut cmd = Command::new("nvidia-smi");
             cmd.args([&format!("--id={idx}"), "--lock-memory-clocks", &format!("{},{}", m.0, m.1)]);
-            push_result(&mut rep, run_smi(&mut cmd));
-            rep.notes.push(format!("locked memory clocks to {}-{} MHz", m.0, m.1));
+            let r = run_smi(&mut cmd);
+            if r.0 { rep.notes.push(format!("Memory clocks locked to {}–{} MHz", m.0, m.1)); }
+            push_result(&mut rep, r);
         }
         if let Some(pl) = s.power_limit_w {
             let mut cmd = Command::new("nvidia-smi");
             cmd.args([&format!("--id={idx}"), "--power-limit", &format!("{:.0}", pl)]);
-            push_result(&mut rep, run_smi(&mut cmd));
+            let r = run_smi(&mut cmd);
+            if r.0 { rep.power_limit = Some(pl); rep.notes.push(format!("Power limit set to {pl:.0} W")); }
+            push_result(&mut rep, r);
         }
         if s.fan_auto {
-            if let Some(msg) = nvidiasettings_reset_fan(&idx) {
-                rep.notes.push(msg);
-            } else {
-                rep.notes.push("fan auto: no nvidia-settings available".into());
+            match set_fan(&self.pci_addr, idx, None) {
+                Ok(msg) => { rep.notes.push(msg); rep.fan = (None, true); }
+                Err(msg) => rep.notes.push(format!("error: {msg}")),
             }
         } else if let Some(p) = s.fan_pct {
-            if let Some(msg) = nvidiasettings_set_fan(&idx, p) {
-                rep.notes.push(msg);
-            } else {
-                rep.notes.push(format!("set fan: no nvidia-settings found (NVIDIA fan control on Linux needs Xorg/display tooling)"));
+            match set_fan(&self.pci_addr, idx, Some(p)) {
+                Ok(msg) => { rep.notes.push(msg); rep.fan = (Some(p), false); }
+                Err(msg) => rep.notes.push(format!("error: {msg}")),
             }
         }
         if let Some(o) = s.core_offset_mhz {
-            // Try the per-driver GPU clock offset control first; some
-            // builds expose it, others (like 6xx series) only expose
-            // locked clocks.
-            let mut cmd = Command::new("nvidia-smi");
-            cmd.args([&format!("--id={idx}"), "--gpu-clock-offset", &format!("{o}")]);
-            let r = run_smi(&mut cmd);
-            if r.1.to_lowercase().contains("invalid") || r.1.is_empty() && !r.0 {
-                rep.notes.push(
-                    "GPU clock offset control not exposed by this driver; use --lock-gpu-clocks instead".into(),
-                );
+            // Path Xorg (Coolbits>=8): GPUGraphicsClockOffset[<n>] por nivel de rendimiento.
+            let done = nvsettings_offset_all(&idx, "GPUGraphicsClockOffset", o);
+            if done > 0 {
+                rep.notes.push(format!("Core offset {o:+} MHz applied through NV-CONTROL (Coolbits)"));
             } else {
-                push_result(&mut rep, r);
+                // path de auxilio: nvidia-smi (datacenter/some builds)
+                let mut cmd = Command::new("nvidia-smi");
+                cmd.args([&format!("--id={idx}"), "--gpu-clock-offset", &format!("{o}")]);
+                let r = run_smi(&mut cmd);
+                if r.1.to_lowercase().contains("invalid") || r.1.is_empty() && !r.0 {
+                    rep.notes.push(
+                        "Core offset requires driver support and may need Xorg + Coolbits (nvidia-settings); use --lock-gpu-clocks (nvidia-smi -lgc) as an alternative".into(),
+                    );
+                } else {
+                    push_result(&mut rep, r);
+                }
             }
         }
         if let Some(o) = s.mem_offset_mhz {
-            let mut cmd = Command::new("nvidia-smi");
-            cmd.args([&format!("--id={idx}"), "--mem-clock-offset", &format!("{o}")]);
-            let r = run_smi(&mut cmd);
-            if r.1.to_lowercase().contains("invalid") || r.1.is_empty() && !r.0 {
-                rep.notes.push(
-                    "Mem clock offset control not exposed by this driver; use --lock-memory-clocks instead".into(),
-                );
+            let done = nvsettings_offset_all(&idx, "GPUMemoryTransferRateOffset", o);
+            if done > 0 {
+                rep.notes.push(format!("Memory offset {o:+} MHz applied through NV-CONTROL (Coolbits)"));
             } else {
-                push_result(&mut rep, r);
+                let mut cmd = Command::new("nvidia-smi");
+                cmd.args([&format!("--id={idx}"), "--mem-clock-offset", &format!("{o}")]);
+                let r = run_smi(&mut cmd);
+                if r.1.to_lowercase().contains("invalid") || r.1.is_empty() && !r.0 {
+                    rep.notes.push(
+                        "Memory offset requires driver support and may need Xorg + Coolbits (nvidia-settings); use --lock-memory-clocks (nvidia-smi -lmc) as an alternative".into(),
+                    );
+                } else {
+                    push_result(&mut rep, r);
+                }
             }
         }
         self.smi_cache = None;
@@ -384,15 +384,52 @@ impl GpuDriver for NvidiaDriver {
         let mut cmd = Command::new("nvidia-smi");
         cmd.args([&format!("--id={idx}"), "--reset-mem-clocks"]);
         push_result(&mut rep, run_smi(&mut cmd));
-        let mut cmd = Command::new("nvidia-smi");
-        cmd.args([&format!("--id={idx}"), "--power-limit", "DEFAULT"]);
-        push_result(&mut rep, run_smi(&mut cmd));
-        if let Some(msg) = nvidiasettings_reset_fan(&idx) {
-            rep.notes.push(msg);
+        if let Some(default) = self.smi_limits().power_default_w {
+            let mut cmd = Command::new("nvidia-smi");
+            cmd.args([&format!("--id={idx}"), "--power-limit", &format!("{default:.0}")]);
+            push_result(&mut rep, run_smi(&mut cmd));
+        }
+        nvsettings_offset_all(&idx, "GPUGraphicsClockOffset", 0);
+        nvsettings_offset_all(&idx, "GPUMemoryTransferRateOffset", 0);
+        match set_fan(&self.pci_addr, idx, None) {
+            Ok(msg) => rep.notes.push(msg),
+            Err(msg) => rep.notes.push(format!("error: {msg}")),
         }
         self.smi_cache = None;
         rep
     }
+}
+
+/// Aplica un offset a todos los niveles de rendimiento vía NV-CONTROL.
+/// Devuelve cuántos índices aceptaron la asignación (0 = none).
+fn nvsettings_offset_all(idx: &u32, attr: &str, delta_mhz: i32) -> u32 {
+    if !Command::new("which")
+        .arg("nvidia-settings")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return 0;
+    }
+    let mut done = 0;
+    // One assignment to all exposed performance levels is preferable to guessing 8 levels.
+    let all = format!("[gpu:{idx}]/{attr}AllPerformanceLevels={delta_mhz}");
+    if let Ok(o) = Command::new("nvidia-settings").args(["-a", &all]).output() {
+        if o.status.success() && !String::from_utf8_lossy(&o.stderr).contains("ERROR") { return 1; }
+    }
+    for lvl in 0..5i32 {
+        let mut cmd = Command::new("nvidia-settings");
+        cmd.args([
+            "-a",
+            &format!("[gpu:{idx}]/{attr}[{lvl}]={delta_mhz}"),
+        ]);
+        if let Ok(o) = cmd.output() {
+            if o.status.success() && !String::from_utf8_lossy(&o.stderr).contains("ERROR") {
+                done += 1;
+            }
+        }
+    }
+    done
 }
 
 fn run_smi(cmd: &mut Command) -> (bool, String) {
@@ -418,27 +455,27 @@ fn push_result(rep: &mut AppliedReport, r: (bool, String)) {
     }
 }
 
-fn nvidiasettings_set_fan(idx: &u32, pct: u32) -> Option<String> {
-    let bin = util::read_to_string("/proc/self/maps").ok(); // touch to prove proc; not needed
-    drop(bin);
-    let mut cmd = Command::new("nvidia-settings");
-    cmd.args([
-        "-a",
-        &format!("[fan:{idx}]/GPUTargetFanSpeed={pct}"),
-    ]);
-    match cmd.output() {
-        Ok(o) if o.status.success() => Some("set fan via nvidia-settings".into()),
-        Ok(_) => None,
-        Err(_) => None,
+fn set_fan(pci: &str, idx: u32, pct: Option<u32>) -> Result<String, String> {
+    match super::nvfan::set(pci, pct) {
+        Ok(msg) => return Ok(msg),
+        Err(e) if e.code == 4 => return crate::fan_service::request(pci, pct),
+        Err(e) if e.code != 3 && e.code != 13 && e.code != -1 => return Err(e.message),
+        Err(_) => {} // older driver: try NV-CONTROL, if available
     }
-}
-
-fn nvidiasettings_reset_fan(idx: &u32) -> Option<String> {
-    let mut cmd = Command::new("nvidia-settings");
-    cmd.args(["-a", &format!("[fan:{idx}]/FanControl=1")]);
-    match cmd.output() {
-        Ok(o) if o.status.success() => Some("fan auto via nvidia-settings".into()),
-        Ok(_) => None,
-        Err(_) => None,
+    let assign = |a: &str| -> Result<(), String> {
+        let o = Command::new("nvidia-settings").args(["-a", a]).output().map_err(|e| e.to_string())?;
+        let err = String::from_utf8_lossy(&o.stderr);
+        if !o.status.success() || err.contains("ERROR") { Err(err.trim().to_string()) } else { Ok(()) }
+    };
+    assign(&format!("[gpu:{idx}]/GPUFanControlState={}", if pct.is_some() {1} else {0}))?;
+    if let Some(p) = pct {
+        if p > 100 { return Err("Fan speed out of range".into()); }
+        let o = Command::new("nvidia-settings").args(["-q", &format!("[gpu:{idx}]/fans"), "-t"])
+            .output().map_err(|e|e.to_string())?;
+        let fans: Vec<u32> = String::from_utf8_lossy(&o.stdout).split(|c:char| !c.is_ascii_digit())
+            .filter_map(|n|n.parse().ok()).collect();
+        if fans.is_empty() { return Err("The driver does not expose fans for this GPU".into()); }
+        for fan in fans { assign(&format!("[fan:{fan}]/GPUTargetFanSpeed={p}"))?; }
     }
+    Ok("Fan control applied through NV-CONTROL".into())
 }

@@ -5,6 +5,7 @@
 pub mod amd;
 pub mod intel;
 pub mod nvidia;
+pub mod nvfan;
 
 #[derive(Debug, Clone, Default)]
 pub struct Sample {

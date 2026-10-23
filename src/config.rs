@@ -49,7 +49,9 @@ impl Ini {
     }
 
     pub fn get_f32(&self, s: &str, k: &str) -> Option<f32> {
-        self.get_i64(s, k).map(|v| v as f32)
+        let raw = self.get(s, k)?;
+        raw.parse::<f32>().ok().filter(|v| v.is_finite())
+            .or_else(|| self.get_i64(s, k).map(|v| v as f32))
     }
 
     pub fn set(&mut self, section: &str, key: &str, val: &str) {
@@ -267,4 +269,16 @@ pub fn default_settings() -> String {
     ini.set("Properties", "ShowMonitoringTab", "1");
     ini.set("Properties", "ShowFanTab", "1");
     ini.to_text()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn decimal_profile_values_and_hex_settings() {
+        let ini = Ini::parse("[Settings]\nPowerLimitW = 290.5\nFlags = 00000003h\nBad = NaN\n");
+        assert_eq!(ini.get_f32("Settings", "PowerLimitW"), Some(290.5));
+        assert_eq!(ini.get_f32("Settings", "Flags"), Some(3.0));
+        assert_eq!(ini.get_f32("Settings", "Bad"), None);
+    }
 }

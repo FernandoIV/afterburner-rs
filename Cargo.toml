@@ -1,6 +1,6 @@
 [package]
 name = "afterburner-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Native Linux port of MSI Afterburner (monitoring + overclocking + fan control) built from reverse-engineered 4.6.6 behavior"
 license = "GPL-2.0-or-later"

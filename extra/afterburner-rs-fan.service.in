@@ -1,0 +1,27 @@
+[Unit]
+Description=Afterburner RS - restricted NVML fan-control bridge
+After=systemd-udev-settle.service
+
+[Service]
+Type=simple
+User=root
+Group=@GROUP@
+ExecStart=/usr/local/bin/afterburner-rs fan-service @UID@
+RuntimeDirectory=afterburner-rs-fan
+RuntimeDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+LockPersonality=true
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

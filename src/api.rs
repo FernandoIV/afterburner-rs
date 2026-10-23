@@ -7,7 +7,6 @@ use crate::config;
 use crate::drivers::{ApplySettings, Caps, Limits, Sample};
 use crate::gpu::{self, GpuDevice};
 use crate::fancurve;
-use crate::util;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -559,42 +558,4 @@ pub fn port_from_settings(ini: &config::Ini) -> u16 {
     } else {
         DEFAULT_PORT
     }
-}
-
-/// subcomando gui: garantiza el daemon vivo y abre el navegador.
-pub fn open_gui() -> i32 {
-    use std::process::{Command, Stdio};
-    if let Ok(t) = TcpStream::connect(("127.0.0.1", DEFAULT_PORT)) {
-        drop(t);
-    } else {
-        // daemon no vivo: levantarlo desacoplado
-        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("afterburner-rs"));
-        let _ = Command::new(&exe)
-            .arg("daemon")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        // esperar hasta 3 s
-        for _ in 0..30 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            if let Ok(t) = TcpStream::connect(("127.0.0.1", DEFAULT_PORT)) {
-                drop(t);
-                break;
-            }
-        }
-    }
-    match Command::new("xdg-open").arg(format!("http://127.0.0.1:{DEFAULT_PORT}")).spawn() {
-        Ok(_) => {
-            println!("GUI abierta en http://127.0.0.1:{DEFAULT_PORT}");
-            0
-        }
-        Err(_) => {
-            println!("no se puede abrir el navegador; visita http://127.0.0.1:{DEFAULT_PORT}");
-            1
-        }
-    }
-}
-
-pub fn now_secs64() -> u64 {
-    util::now_secs()
 }

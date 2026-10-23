@@ -222,6 +222,9 @@ pub fn entries_from_shm() -> std::io::Result<Vec<MahmEntry>> {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "signature mismatch"));
     }
     let esz = esz as usize;
+    if esz < 5 * MAX_PATH + 24 || hsize < hdr as u32 || n as usize > b.len() / esz {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid MAHM entry bounds"));
+    }
     let mut out = vec![];
     for i in 0..n as usize {
         let o = hsize as usize + i * esz;
@@ -231,7 +234,7 @@ pub fn entries_from_shm() -> std::io::Result<Vec<MahmEntry>> {
         let v = &b[o..o + esz];
         let c = |from: usize| -> String {
             let s = &v[from..from + MAX_PATH];
-            let e = s.iter().position(|x| *x == 0).unwrap_or(0);
+            let e = s.iter().position(|x| *x == 0).unwrap_or(s.len());
             String::from_utf8_lossy(&s[..e]).to_string()
         };
         let f = |from: usize| f32::from_le_bytes(v[from..from + 4].try_into().unwrap());

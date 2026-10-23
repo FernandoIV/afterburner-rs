@@ -1,0 +1,19 @@
+# Rendered by extra/install-native.sh. Do not install this template unchanged.
+
+[Unit]
+Description=Afterburner RS - monitoring, fan curves and MAHM
+After=afterburner-rs-fan.service
+Wants=afterburner-rs-fan.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+Environment="HOME=@HOME@"
+Environment="XDG_CONFIG_HOME=@HOME@/.config"
+ExecStart=/usr/local/bin/afterburner-rs daemon
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
