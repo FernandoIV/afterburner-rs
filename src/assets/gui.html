@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AFTERBURNER // RS — TRON DASHBOARD</title>
+<style>
+  :root{
+    --bg:#03050a; --bg2:#060b12; --panel:#04080f;
+    --cyan:#00e5ff; --cyan-dim:#0a7f8f; --orange:#ff9500; --white:#e8fbff;
+    --red:#ff3355; --grid:rgba(0,229,255,.07); --line:rgba(0,229,255,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--white);
+    font-family:"DejaVu Sans Mono","Liberation Mono",ui-monospace,Monospace,monospace;
+    min-height:100%}
+  /* TRON grid backdrop */
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      linear-gradient(transparent 96%, var(--grid) 96%),
+      linear-gradient(90deg, transparent 96%, var(--grid) 96%),
+      radial-gradient(ellipse at 50% -10%, rgba(0,229,255,.10), transparent 55%),
+      radial-gradient(ellipse at 50% 110%, rgba(255,149,0,.05), transparent 50%);
+    background-size:34px 34px,34px 34px,100% 100%,100% 100%;}
+  #app{position:relative;z-index:1;max-width:1500px;margin:0 auto;padding:18px 20px 60px}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:20px;
+    border-bottom:1px solid var(--line);padding-bottom:14px}
+  header img{width:52px;height:52px;filter:drop-shadow(0 0 8px rgba(0,229,255,.8))}
+  h1{font-size:24px;letter-spacing:5px;color:var(--cyan);
+    text-shadow:0 0 12px rgba(0,229,255,.9),0 0 30px rgba(0,229,255,.4);font-weight:700}
+  h1 .dim{color:var(--orange);text-shadow:0 0 12px rgba(255,149,0,.9)}
+  #svc{margin-left:auto;font-size:12px;color:var(--cyan-dim);letter-spacing:2px}
+  #svc b{color:var(--cyan)}
+  #svc .warn{color:var(--orange)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(640px,1fr));gap:18px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    padding:14px 16px;position:relative;
+    box-shadow:0 0 0 1px rgba(0,229,255,.08),inset 0 0 25px rgba(0,229,255,.05),
+      0 0 18px rgba(0,229,255,.12)}
+  .card::before{content:"";position:absolute;top:-1px;left:12px;right:12px;height:2px;
+    background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+    filter:blur(1px)}
+  .card h2{font-size:13px;letter-spacing:3px;color:var(--cyan);margin-bottom:10px;
+    text-shadow:0 0 8px rgba(0,229,255,.7)}
+  .card h2 .tag{color:var(--orange);text-shadow:0 0 8px rgba(255,149,0,.7)}
+
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 10px}
+  .stat{background:rgba(0,229,255,.04);border:1px solid rgba(0,229,255,.18);
+    border-radius:4px;padding:7px 9px}
+  .stat small{display:block;font-size:9px;letter-spacing:2px;color:var(--cyan-dim)}
+  .stat span{font-size:17px;color:var(--white);text-shadow:0 0 8px rgba(0,229,255,.35)}
+  .stat.o span{color:var(--orange);text-shadow:0 0 8px rgba(255,149,0,.5)}
+  .stat small.hot{color:var(--red)}
+
+  .bar{height:7px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;
+    border:1px solid rgba(0,229,255,.15);margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--cyan);
+    box-shadow:0 0 8px var(--cyan);transition:width .5s}
+  .bar.o i{background:var(--orange);box-shadow:0 0 8px var(--orange)}
+  .bar.r i{background:var(--red);box-shadow:0 0 8px var(--red)}
+
+  canvas.spark{width:100%;height:64px;display:block;margin:8px 0;
+    background:
+      linear-gradient(transparent 95%,rgba(0,229,255,.08) 95%),
+      linear-gradient(90deg,transparent 95%,rgba(0,229,255,.08) 95%);
+    background-size:25% 100%,calc(100%/6) 100%;
+    border:1px solid rgba(0,229,255,.2);border-radius:4px}
+
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:7px 0}
+  label{font-size:10px;letter-spacing:2px;color:var(--cyan-dim)}
+  input[type=number],input[type=text]{
+    background:#01030a;border:1px solid var(--line);color:var(--cyan);
+    font-family:inherit;font-size:12px;padding:5px 8px;border-radius:3px;width:92px;
+    box-shadow:inset 0 0 10px rgba(0,229,255,.1)}
+  input[type=number]:focus,input[type=text]:focus{outline:none;border-color:var(--cyan);
+    box-shadow:0 0 10px rgba(0,229,255,.5)}
+  input[type=range]{flex:1;min-width:120px;accent-color:var(--cyan);height:22px}
+  .rng{display:flex;align-items:center;gap:10px;margin:7px 0}
+  .rng>span{min-width:52px;font-size:12px;color:var(--white)}
+
+  button{background:#02060c;border:1px solid var(--cyan);color:var(--cyan);
+    font-family:inherit;font-size:11px;letter-spacing:2px;padding:7px 14px;cursor:pointer;
+    border-radius:3px;text-transform:uppercase;transition:.15s;
+    box-shadow:0 0 6px rgba(0,229,255,.35),inset 0 0 8px rgba(0,229,255,.15)}
+  button:hover{background:rgba(0,229,255,.14);box-shadow:0 0 16px rgba(0,229,255,.8);
+    text-shadow:0 0 6px var(--cyan)}
+  button.o{border-color:var(--orange);color:var(--orange);
+    box-shadow:0 0 6px rgba(255,149,0,.35),inset 0 0 8px rgba(255,149,0,.15)}
+  button.o:hover{background:rgba(255,149,0,.14);box-shadow:0 0 16px rgba(255,149,0,.8);
+    text-shadow:0 0 6px var(--orange)}
+  button.r{border-color:var(--red);color:var(--red);
+    box-shadow:0 0 6px rgba(255,51,85,.35),inset 0 0 8px rgba(255,51,85,.15)}
+  button.r:hover{background:rgba(255,51,85,.14);box-shadow:0 0 16px rgba(255,51,85,.8)}
+  button.sm{padding:4px 9px;font-size:10px}
+  button.on{background:rgba(0,229,255,.2);box-shadow:0 0 14px rgba(0,229,255,.7)}
+  button.on.o{background:rgba(255,149,0,.2)}
+  button:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+
+  #notes{margin-top:6px;max-height:52px;overflow-y:auto;font-size:10px;color:#6ea9b8}
+  .noteline{border-left:2px solid var(--orange);padding-left:6px;margin:2px 0;white-space:pre-wrap}
+
+  /* curve editor */
+  #cvwrap{display:grid;grid-template-columns:1fr 190px;gap:14px}
+  @media(max-width:900px){#cvwrap{grid-template-columns:1fr}}
+  #curve{background:#01030a;border:1px solid var(--line);border-radius:4px;width:100%}
+  .crvrows{max-height:150px;overflow-y:auto}
+  .crvrows table{width:100%;font-size:10px;color:#9fd8e2;border-collapse:collapse}
+  .crvrows td{padding:2px 4px}
+  .crvrows input{width:56px}
+  .kv{display:flex;gap:8px;align-items:center;margin:4px 0}
+
+  /* mahm table */
+  #mahmt{width:100%;font-size:11px;border-collapse:collapse;color:#bfeef6;max-height:220px}
+  #mahmt th{color:var(--cyan-dim);font-size:9px;letter-spacing:2px;text-align:left;
+    border-bottom:1px solid var(--line);padding:3px 6px;position:sticky;top:0;background:var(--panel)}
+  #mahmt td{padding:3px 6px;border-bottom:1px solid rgba(0,229,255,.08)}
+  #mahmt tr:hover td{background:rgba(0,229,255,.06)}
+  #mahmt .num{color:var(--orange);text-shadow:0 0 6px rgba(255,149,0,.4)}
+
+  /* profiles */
+  .prof{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .prof .slot{border:1px solid rgba(0,229,255,.25);border-radius:4px;padding:7px 9px;
+    background:rgba(0,229,255,.03);font-size:11px}
+  .prof .slot b{color:var(--cyan);display:block;font-size:11px;letter-spacing:1px}
+  .prof .slot small{color:#5b8f9e;font-size:9px;display:block;margin:2px 0 5px;min-height:22px}
+  .prof .slot .buts{display:flex;gap:5px}
+
+  footer{margin-top:24px;border-top:1px solid var(--line);padding-top:10px;
+    display:flex;gap:20px;font-size:10px;color:var(--cyan-dim);letter-spacing:2px}
+  footer b{color:var(--cyan)}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:rgba(0,229,255,.3);border-radius:4px}
+  ::-webkit-scrollbar-track{background:rgba(0,229,255,.05)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <img src="/icon.svg" alt="AB-RS">
+    <h1>AFTERBURNER&nbsp;//&nbsp;<span class="dim">RS</span></h1>
+    <div id="svc">SYSTEM <b id="svc-state">CONNECTING…</b> · v<b id="svc-ver">-</b> ·
+      POLL <b id="svc-ms">-</b>ms · <span id="svc-curve" class="warn">CURVE OFF</span></div>
+  </header>
+
+  <div class="grid" id="gpus"></div>
+
+  <div class="grid" style="margin-top:18px">
+    <!-- ═══ CURVA DE VENTILADOR ═══ -->
+    <div class="card">
+      <h2>VENTILADOR <span class="tag">// CURVA DE SOFTWARE</span></h2>
+      <div id="cvwrap">
+        <div>
+          <svg id="curve" viewBox="0 0 400 240" height="240"></svg>
+          <div class="row">
+            <button class="o" onclick="applyCurve()">▶ APLICAR CURVA</button>
+            <button class="r" onclick="curveOff()">■ DESACTIVAR</button>
+            <select id="preset" style="background:#01030a;color:#00e5ff;border:1px solid rgba(0,229,255,.35);font-family:inherit;padding:5px;border-radius:3px">
+              <option value="">— presets —</option>
+              <option value="40:30,50:40,60:55,70:75,80:100">Silenciosa</option>
+              <option value="40:40,55:55,65:70,75:85,85:100">Agresiva</option>
+              <option value="45:25,60:40,70:60,80:80,90:100">Equilibrada</option>
+            </select>
+            <button class="sm" onclick="loadPreset()">CARGAR</button>
+          </div>
+        </div>
+        <div class="crvrows">
+          <table><thead><tr><th>°C</th><th>%</th><th></th></tr></thead>
+          <tbody id="crvt"></tbody></table>
+          <div class="row" style="margin-top:6px">
+            <button class="sm" onclick="addNode(60,50)">+ NODO</button>
+          </div>
+          <p style="font-size:9px;color:#5b8f9e;margin-top:8px;line-height:1.6">
+            Camino hacia zonas del eje: haz clic para <b>añadir</b> nodos,
+            arrastra en la gráfica para <b>moverlos</b>, doble clic o la tabla para <b>borrar</b>.
+            Mínimo 2 nodos.</p>
+          <p style="font-size:9px;color:#ff9500;margin-top:6px">ESTADO: <b id="crvstate">—</b></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PERFILES ═══ -->
+    <div class="card">
+      <h2>PERFILES <span class="tag">// 1–9</span></h2>
+      <div class="prof" id="profs"></div>
+      <div class="row" style="margin-top:10px">
+        <label style="min-width:150px">GUARDAR CONFIG ACTUAL →</label>
+        <select id="pslot" style="background:#01030a;color:#00e5ff;border:1px solid rgba(0,229,255,.35);font-family:inherit;padding:4px 6px;border-radius:3px">
+          <option>1</option><option>2</option><option>3</option><option>4</option>
+          <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+        </select>
+        <input type="text" id="pname" placeholder="nombre" style="width:150px">
+        <button class="o" onclick="saveProfile()">💾 SAVE</button>
+        <button class="sm" onclick="listProfiles()">⟳ REFRESCAR</button>
+      </div>
+      <p id="profmsg" style="font-size:10px;color:#6ea9b8;margin-top:4px"></p>
+    </div>
+
+    <!-- ═══ LOG CSV ═══ -->
+    <div class="card">
+      <h2>REGISTRO CSV <span class="tag">// SENSORES</span></h2>
+      <div class="row">
+        <button id="logb" class="o" onclick="logToggle()">● ACTIVAR LOG</button>
+        <input type="text" id="logp" style="flex:1;min-width:260px" placeholder="ruta del CSV">
+      </div>
+      <p style="font-size:9px;color:#5b8f9e;margin-top:6px">
+        El demonio escribe temp/fan/clocks/uso/potencia por GPU en el CSV cada ciclo de
+        sondeo. Tras cambiar el interruptor, el daemon lo recoge al re-cargar ajustes.</p>
+    </div>
+
+    <!-- ═══ MAHM ═══ -->
+    <div class="card">
+      <h2>MEMORIA COMPARTIDA <span class="tag">// MAHM NOSGUIREADA</span></h2>
+      <div class="row" style="font-size:10px;color:#5b8f9e">
+        <span>SIGNATURE <b id="mahmsig" style="color:#00e5ff">—</b></span>
+        <span>ENTRIES <b id="mahmn" style="color:#ff9500">—</b></span>
+        <span>GPUS <b id="mahmg" style="color:#00e5ff">—</b></span>
+      </div>
+      <div style="max-height:230px;overflow-y:auto;border:1px solid rgba(0,229,255,.12);border-radius:4px">
+        <table id="mahmt">
+          <thead><tr><th>SRC</th><th>VALOR</th><th>UNIDADES</th><th>ID</th><th>GPU</th></tr></thead>
+          <tbody id="mahmb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span>AFTERBURNER-RS <b id="fver">—</b></span>
+    <span>PORT NATIVO LINUX · RUST</span>
+    <span>MAHM v2.0 <b>COMPATIBLE</b> (1324b/entrada)</span>
+    <span id="ferr" style="color:#ff3355"></span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+let CURVE=[]; let CURVE_ON=false; let LAST=null; let ERRN=0;
+const hist={}; // gpu_idx -> array of temps
+
+/* ─────────────── helpers ─────────────── */
+const $=id=>document.getElementById(id);
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+async function api(path,body){
+  const opt=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
+  const r=await fetch(path,opt); return r.json();
+}
+function num(v){return v==null?"—":(+v).toFixed(1).replace(/\.0$/,"")}
+
+/* ─────────────── polling loop ─────────────── */
+async function poll(){
+  try{
+    const d=await api("/api/sample");
+    renderSys(d); renderGPUs(d); CURVE=d.curve||CURVE; CURVE_ON=!!d.curve_enabled;
+    drawCurve(); renderCurveRows(); renderProfilesSoon();
+    ERRN=0; $("ferr").textContent="";
+  }catch(e){
+    ERRN++; $("svc-state").innerHTML='<span class="warn">OFFLINE ('+ERRN+')</span>';
+    $("ferr").textContent="sin datos del daemon ("+ERRN+")";
+  }
+  setTimeout(poll,1000);
+}
+async function pollMahm(){
+  try{ await renderMahm(); }catch(e){}
+  setTimeout(pollMahm,3000);
+}
+
+/* ─────────────── system header ─────────────── */
+function renderSys(d){
+  $("svc-state").innerHTML="<b>ONLINE</b>";
+  $("svc-ver").textContent=d.version||"—"; $("fver").textContent=d.version||"—";
+  const ms=performance.now()-LAST; LAST=performance.now(); $("svc-ms").textContent=num(ms);
+  const c=$("svc-curve");
+  c.textContent=CURVE_ON?"CURVA ACTIVA":"CURVE OFF";
+  c.style.color=CURVE_ON?"#ff9500":"#0a7f8f";
+  $("crvstate").textContent=CURVE_ON?"ACTIVA":"desactivada";
+}
+
+/* ─────────────── GPU panels ─────────────── */
+function bar(pct,cls){return '<div class="bar '+(cls||"")+'"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i></div>'}
+function renderGPUs(d){
+  const wrap=$("gpus");
+  d.gpus.forEach((g,i)=>{
+    let el=document.getElementById("gp"+i);
+    if(!el){
+      el=document.createElement("div");el.className="card";el.id="gp"+i;wrap.appendChild(el);
+    }
+    const t=g.temp==null?null:+g.temp;
+    const tcls=t==null?"":t>80?"r":t>65?"o":"";
+    const hot=t!=null&&t>80;
+    (hist[i]=hist[i]||[]).push(t==null?0:t); if(hist[i].length>140)hist[i].shift();
+    let h='<h2>GPU'+i+' <span class="tag">'+esc(g.name)+'</span></h2>';
+    h+='<div class="stats">'+
+      '<div class="stat"><small>TEMPERATURA °C</small><span class="'+(hot?"":"")+'">'+(t==null?"—":t.toFixed(0))+'</span>'+bar(t||0,tcls)+'</div>'+
+      '<div class="stat"><small>FAN</small><span>'+num(g.fan)+'%</span><small>RPM '+num(g.fan_rpm)+'</span>'+bar(g.fan||0,"o")+'</div>'+
+      '<div class="stat"><small>USO GPU</small><span>'+num(g.usage)+'%</span>'+bar(g.usage||0)+'</div>'+
+      '<div class="stat"><small>CORE MHz</small><span>'+num(g.clk_core)+'</span></div>'+
+      '<div class="stat"><small>MEM MHz</small><span>'+num(g.clk_mem)+'</span></div>'+
+      '<div class="stat o"><small>POTENCIA W</small><span>'+num(g.power)+'</span>'+bar(g.power_limit&&g.power!=null?(g.power/g.power_limit*100):0,"o")+'</div>'+
+    '</div>';
+    h+='<canvas class="spark" id="sp'+i+'" width="600" height="64"></canvas>';
+    /* power limit slider */
+    if(g.caps_power){
+      const pmin=g.power_min||0, pmax=g.power_max||0, pdef=g.power_default||0;
+      h+='<div class="rng"><label>LIM. POT.</label>'+
+        '<input type="range" id="pl'+i+'" min="'+pmin+'" max="'+pmax+'" value="'+(g.power_limit||pdef)+'" step="1">'+
+        '<span id="plv'+i+'">'+num(g.power_limit||pdef)+'W</span>'+
+        '<button class="o sm" id="plb'+i+'" onclick="setPower('+i+')" disabled>APLICAR</button>'+
+        '<button class="sm" onclick="resetGpu('+i+')">RESET</button>'+
+        '<small style="min-width:170px;font-size:9px;color:#5b8f9e">'+pmin+'–'+pmax+'W · def '+pdef+'W</small></div>';
+    }
+    /* clock offsets + locks */
+    if(g.caps_core_offset||g.caps_mem_offset){
+      h+='<div class="row"><label>OFFSET CORE</label><input type="number" id="co'+i+'" placeholder="+0">'+
+        '<label>MEM</label><input type="number" id="mo'+i+'" placeholder="+0">'+
+        (g.caps_core_offset?'<label>LOCK CORE</label><input type="number" id="lcm'+i+'" placeholder="min"><input type="number" id="lcx'+i+'" placeholder="max">':'')+
+        (g.caps_mem_offset?'<label>LOCK MEM</label><input type="number" id="lmm'+i+'" placeholder="min"><input type="number" id="lmx'+i+'" placeholder="max">':'')+
+        '<button class="o" onclick="setClocks('+i+')">⚡ OVERCLOCK</button></div>';
+    }
+    /* fan manual */
+    if(g.caps_fan){
+      h+='<div class="rng"><label>FAN MANUAL</label>'+
+        '<input type="range" id="fr'+i+'" min="0" max="100" value="50">'+
+        '<span id="frv'+i+'">50%</span>'+
+        '<button class="sm" id="fab'+i+'" onclick="setFan('+i+','+true+')">AUTO</button>'+
+        '<button class="sm on" id="fmb'+i+'" onclick="setFan('+i+',false)">MANUAL</button>'+
+        (g.caps_fan_auto?'':'<small style="font-size:9px;color:#ff9500">auto fijo</small>')+'</div>';
+    }
+    h+='<div id="nt'+i+'"></div>';
+    el.innerHTML=h;
+    const pl=$("pl"+i); if(pl)pl.oninput=()=>{$("plv"+i).textContent=pl.value+"W";$("plb"+i).disabled=false};
+    const fr=$("fr"+i); if(fr)fr.oninput=()=>{$("frv"+i).textContent=fr.value+"%"};
+    drawSpark($("sp"+i),hist[i]);
+  });
+}
+
+/* ─────────────── sparkline ─────────────── */
+function drawSpark(cv,vals){
+  if(!cv||!vals||!vals.length)return;
+  const ctx=cv.getContext("2d");const W=cv.width,H=cv.height,pad=4;
+  ctx.clearRect(0,0,W,H);
+  const mx=Math.max.apply(null,vals), mn=Math.min.apply(null,vals);
+  const lo=Math.max(0,mn-8), hi=mx+8, span=(hi-lo)||1;
+  ctx.beginPath();
+  vals.forEach((v,i)=>{
+    const x=pad+i*(W-pad*2)/(vals.length-1||1);
+    const y=H-pad-(v-lo)/span*(H-pad*2);
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  });
+  ctx.strokeStyle="#ff9500";ctx.lineWidth=1.6;
+  ctx.shadowColor="#ff9500";ctx.shadowBlur=6;ctx.stroke();ctx.shadowBlur=0;
+  const gx=pad+(W-pad*2);
+  const gy=H-pad-(vals[vals.length-1]-lo)/span*(H-pad*2);
+  ctx.beginPath();ctx.arc(gx,gy,2.5,0,7);ctx.fillStyle="#fff";ctx.shadowColor="#00e5ff";ctx.shadowBlur=8;ctx.fill();
+}
+
+/* ─────────────── actions ─────────────── */
+function showNote(i,js){
+  const el=$("nt"+i); if(!el||!js)return;
+  const ns=(js.notes||[]).concat(js.error?[js.error]:[]);
+  el.innerHTML=ns.map(n=>'<div class="noteline">'+esc(n)+'</div>').join("");
+  setTimeout(()=>{el.innerHTML=""},9000);
+}
+async function setPower(i){
+  const b=$("pl"+i); const W=+b.value;
+  const js=await api("/api/set",{gpu:i,power_w:W}); showNote(i,js); $("plb"+i).disabled=true;
+}
+async function setClocks(i){
+  const body={gpu:i};
+  const co=$("co"+i), mo=$("mo"+i), lc1=$("lcm"+i), lc2=$("lcx"+i), lm1=$("lmm"+i), lm2=$("lmx"+i);
+  if(co&&co.value!=="")body.core_offset=+co.value;
+  if(mo&&mo.value!=="")body.mem_offset=+mo.value;
+  if(lc1&&lc2&&lc1.value!==""&&lc2.value!==""){body.lock_core_min=+lc1.value;body.lock_core_max=+lc2.value;}
+  if(lm1&&lm2&&lm1.value!==""&&lm2.value!==""){body.lock_mem_min=+lm1.value;body.lock_mem_max=+lm2.value;}
+  const js=await api("/api/set",body); showNote(i,js);
+}
+async function setFan(i,auto){
+  const body={gpu:i};
+  if(auto){body.fan_mode="auto";}
+  else{body.fan_mode="manual";body.fan_pct=+$("fr"+i).value;}
+  const js=await api("/api/set",body);
+  $("fab"+i).className="sm"+(auto?" on":""); $("fmb"+i).className="sm"+(auto?"":" on");
+  showNote(i,js);
+}
+async function resetGpu(i){
+  if(!confirm("Restaurar toda la configuración de GPU"+i+" (offsets, relojes, potencia y fan)?"))return;
+  const js=await api("/api/reset",{gpu:i}); showNote(i,js);
+}
+async function applyCurve(){
+  const js=await api("/api/curve",{nodes:CURVE}); $("crvstate").textContent="ACTIVA — aplicando";
+  setTimeout(poll,200);
+}
+async function curveOff(){
+  const js=await api("/api/curve-off",{}); $("crvstate").textContent="desactivada";
+  setTimeout(poll,200);
+}
+function loadPreset(){
+  const v=$("preset").value; if(!v)return;
+  CURVE=v.split(",").map(p=>p.split(":").map(Number));
+  drawCurve();renderCurveRows();
+}
+
+/* ─────────────── curve editor SVG ─────────────── */
+const CX0=42,CY0=12,CW=400-CX0-14,CH=240-CY0-30;
+function cx2px(t){return CX0+(t/100)*CW}
+function cy2px(d){return CY0+(1-d/100)*CH}
+function drawCurve(){
+  const svg=$("curve"); if(!svg||!CURVE.length)return;
+  const ns=CURVE.slice().sort((a,b)=>a[0]-b[0]);
+  let s='';
+  for(let g=0;g<=100;g+=20)s+='<line x1="'+CX0+'" y1="'+cy2px(g)+'" x2="'+(CX0+CW)+'" y2="'+cy2px(g)+'" stroke="rgba(0,229,255,.15)" stroke-width="1"/>';
+  for(let x=0;x<=100;x+=10)s+='<line x1="'+cx2px(x)+'" y1="'+CY0+'" x2="'+cx2px(x)+'" y2="'+(CY0+CH)+'" stroke="rgba(0,229,255,.07)" stroke-width="1"/>';
+  s+='<text x="4" y="20" fill="#0a7f8f" font-size="8">100%</text><text x="4" y="'+(CY0+CH)+'" fill="#0a7f8f" font-size="8">0%</text>';
+  s+='<text x="'+(CX0)+'" y="236" fill="#0a7f8f" font-size="8">30°C</text><text x="'+(CX0+CW-30)+'" y="236" fill="#0a7f8f" font-size="8">100°C</text>';
+  const pts=ns.map(n=>[cx2px(n[0]),cy2px(n[1])]);
+  let line='';pts.forEach((p,i)=>line+=(i?" L":"M")+p[0]+" "+p[1]);
+  s+='<path d="'+line+'" fill="none" stroke="#00e5ff" stroke-width="2" style="filter:drop-shadow(0 0 5px #00e5ff)"/>';
+  pts.forEach((p,i)=>s+='<circle data-i="'+i+'" class="node" cx="'+p[0]+'" cy="'+p[1]+'" r="5" fill="#01030a" stroke="#ff9500" stroke-width="2" style="filter:drop-shadow(0 0 4px #ff9500);cursor:grab"/>');
+  s+='<rect x="0" y="0" width="400" height="240" fill="transparent" id="cvhit"/>';
+  svg.innerHTML=s;
+  svg.querySelectorAll(".node").forEach(n=>{
+    n.addEventListener("mousedown",ndrag);
+    n.addEventListener("dblclick",ev=>{CURVE.splice(+ev.target.dataset.i,1);drawCurve();renderCurveRows()});
+  });
+  const hit=svg.querySelector("#cvhit");
+  if(hit)hit.addEventListener("dblclick",ev=>{
+    const r=svg.getBoundingClientRect();
+    const t=Math.round(((ev.clientX-r.left)/r.width*400-CX0)/CW*100);
+    const d=Math.round((1-((ev.clientY-r.top)/r.height*240-CY0)/CH)*100);
+    if(t>=0&&t<=110&&d>=0&&d<=100)addNode(clampT(t),d);
+  });
+}
+const clampT=t=>Math.max(30,Math.min(110,t));
+let drag=null;
+function ndrag(ev){
+  const svg=$("curve");drag=+ev.target.dataset.i;
+  svg.style.cursor="grabbing";
+  const move=e=>{
+    if(drag==null)return;
+    const r=svg.getBoundingClientRect();
+    const px=((e.clientX-r.left)/r.width*400);
+    const py=((e.clientY-r.top)/r.height*240);
+    CURVE[drag]=[clampT(Math.round((px-CX0)/CW*100)),Math.max(0,Math.min(100,Math.round((1-(py-CY0)/CH)*100)))];
+    drawCurve();renderCurveRows();
+  };
+  const up=e=>{drag=null;svg.style.cursor="";document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up)};
+  document.addEventListener("mousemove",move);document.addEventListener("mouseup",up);
+}
+function renderCurveRows(){
+  const tb=$("crvt"); if(!tb||!CURVE.length)return;
+  tb.innerHTML=CURVE.map((n,i)=>
+    '<tr><td><input type="number" value="'+n[0]+'" onchange="CURVE['+i+'][0]=clampT(+this.value);drawCurve();renderCurveRows()"></td>'+
+    '<td><input type="number" value="'+n[1]+'" onchange="CURVE['+i+'][1]=Math.max(0,Math.min(100,+this.value));drawCurve();renderCurveRows()"></td>'+
+    '<td><button class="r sm" onclick="CURVE.splice('+i+',1);drawCurve();renderCurveRows()">✕</button></td></tr>').join("");
+}
+function addNode(t,d){CURVE.push([clampT(t),d]);CURVE.sort((a,b)=>a[0]-b[0]);drawCurve();renderCurveRows()}
+
+/* ─────────────── profiles ─────────────── */
+let profTimer=0;
+function renderProfilesSoon(){if(profTimer)return;profTimer=setTimeout(()=>{profTimer=0;listProfiles()},2500)}
+async function listProfiles(){
+  try{
+    const d=await api("/api/profiles");
+    const box=$("profs");if(!box)return;
+    const map={};
+    (d.profiles||[]).forEach(p=>map[p.slot]=p);
+    let h='';
+    for(let s=1;s<=9;s++){
+      const p=map[s];
+      h+='<div class="slot"><b>PERFIL '+s+'</b>'+
+        '<small>'+(p?esc(p.name)+" · core "+p.core+" · mem "+p.mem+(p.power!=null?" · "+p.power+"W":"")+" · "+(p.fan_auto?"fan auto":"fan manual"):"— vacío —")+'</small>'+
+        '<div class="buts"><button class="sm" onclick="loadProfile('+s+')">▶ LOAD</button>'+
+        '<button class="o sm" onclick="quickSave('+s+')">SAVE</button></div></div>';
+    }
+    box.innerHTML=h;
+  }catch(e){}
+}
+async function quickSave(s){const js=await api("/api/profile/save",{slot:s});$("profmsg").textContent=js.ok?("guardado: "+(js.path||"")):("error: "+(js.error||"?"))}
+function saveProfile(){quickSave(+$("pslot").value)}
+async function loadProfile(s){
+  const js=await api("/api/profile/load",{slot:s});
+  $("profmsg").textContent=(js.notes||[]).join(" · ")||js.ok||"";
+}
+async function listProfilesWrap(){$("profmsg").textContent=""}
+/* ─────────────── log ─────────────── */
+let logOn=false;
+async function logToggle(){
+  logOn=!logOn;
+  const js=await api("/api/log",{enable:logOn?1:0,path:$("logp").value||undefined});
+  const b=$("logb");
+  b.textContent=logOn?"■ DESACTIVAR LOG":"● ACTIVAR LOG";
+  b.className=logOn?"r":"o"; b.classList.toggle("on",logOn);
+  if(js.path)$("logp").value=js.path;
+}
+/* ─────────────── MAHM viewer ─────────────── */
+async function renderMahm(){
+  const d=await api("/api/mahm");
+  $("mahmsig").textContent=d.error?("INACTIVO"):"MAHM";
+  $("mahmn").textContent=d.entries?d.entries.length:"0";
+  $("mahmg").textContent=d.gpus||"—";
+  const tb=$("mahmb");if(!tb)return;
+  tb.innerHTML=(d.entries||[]).map(e=>
+    '<tr><td>'+esc(e.name)+'</td><td class="num">'+esc(e.data==null?"null":e.data)+'</td>'+
+    '<td>'+esc(e.units)+'</td><td>'+esc(e.id)+'</td><td>'+e.gpu+'</td></tr>').join("")
+    ||'<tr><td colspan="5" style="color:#5b8f9e">'+esc(d.error||"sin datos — ¿demonio activo?")+'</td></tr>';
+}
+
+poll(); pollMahm(); listProfiles();
+</script>
+</body>
+</html>

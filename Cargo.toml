@@ -1,0 +1,18 @@
+[package]
+name = "afterburner-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Native Linux port of MSI Afterburner (monitoring + overclocking + fan control) built from reverse-engineered 4.6.6 behavior"
+license = "GPL-2.0-or-later"
+
+[[bin]]
+name = "afterburner-rs"
+path = "src/main.rs"
+
+# Sin dependencias externas: build offline garantizado.
+[dependencies]
+
+[profile.release]
+opt-level = 2
+lto = true
+strip = true
