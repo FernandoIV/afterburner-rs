@@ -21,6 +21,15 @@ core.*
 *.p12
 *.pfx
 
+# OpenCode configuration, agent state, and exported conversation/session data.
+/.opencode/
+/opencode.json
+/opencode.jsonc
+/opencode-session*
+/session-*.json
+/session-*.md
+/ses_*
+
 # Proprietary analysis inputs and extracted vendor payloads are not project source.
 *.exe
 *.dll
